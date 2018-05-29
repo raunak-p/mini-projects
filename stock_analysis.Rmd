@@ -1,0 +1,124 @@
+---
+title: "Stock Analysis"
+author: "Raunak Pednekar"
+date: "June 6, 2017"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+
+#tidyverse contains tidyR and ggplot2 that I am using
+library(tidyverse)
+library(scales)
+```
+
+In this report, I analyze the perfomance of IBM, GE, Proctor and Gamble, Coca Cola, and Boeing stocks over the last few decades
+
+```{r, echo =FALSE}
+
+#Reading Data in
+ibm <-  read.csv("./Data/IBMStock.csv")
+ge <- read.csv("./Data/GESTock.csv")
+pg <- read.csv("./Data/ProcterGambleStock.csv")
+coke <- read.csv("./Data/CocaColaStock.csv")
+bng <-  read.csv("./Data/BoeingStock.csv")
+
+#Changing dates to date format
+ibm$Date = as.Date(ibm$Date, "%m/%d/%y")
+ge$Date = as.Date(ge$Date, "%m/%d/%y")
+coke$Date = as.Date(coke$Date, "%m/%d/%y")
+pg$Date = as.Date(pg$Date, "%m/%d/%y")
+bng$Date = as.Date(bng$Date, "%m/%d/%y")
+
+
+stocks <- data.frame(coke$Date, coke$StockPrice, ibm$StockPrice, ge$StockPrice, pg$StockPrice, bng$StockPrice)
+
+```
+
+
+I visualize the stock performance of these companies from 1995 to 2005 
+
+
+```{r}
+
+#filtering data in appropriate date range
+
+stocks_slice <- filter(stocks, coke.Date >= "1995-01-01" & coke.Date <= "2005-12-31" )
+
+
+
+#tidying data and changing names so ggplot can easily plot this
+
+stocks_slice_t <- gather(stocks_slice, coke.StockPrice, ibm.StockPrice, ge.StockPrice, pg.StockPrice, bng.StockPrice, key = "company", value = "stock_price")
+
+
+colnames(stocks_slice_t) <- c("Date", "Company", "Stock_Price")
+
+stocks_slice_t2 <- subset(stocks_slice_t, select = -c(Date))
+stocks_slice_td <- subset(stocks_slice_t, select = c(Date))
+
+stocks_slice_t2[stocks_slice_t2 == "coke.StockPrice"] <- "Coca-Cola"
+stocks_slice_t2[stocks_slice_t2 == "ibm.StockPrice"] <- "IBM"
+stocks_slice_t2[stocks_slice_t2 == "ge.StockPrice"] <- "General Electric"
+stocks_slice_t2[stocks_slice_t2 == "bng.StockPrice"] <- "Boeing"
+stocks_slice_t2[stocks_slice_t2 == "pg.StockPrice"] <- "Procter and Gamble"
+
+stocks_slice_t <- cbind.data.frame(stocks_slice_td, stocks_slice_t2)
+
+
+
+
+#plotting with ggplot
+tech_crash <- as.numeric(as.Date("2000-03-01"))
+asia_crash_st <- as.numeric(as.Date("1997-09-01"))
+asia_crash_end <- as.numeric(as.Date("1997-11-01"))
+
+ggplot(data = stocks_slice_t) +
+  geom_line(mapping = aes(x = Date, y = Stock_Price, color = Company)) +
+  geom_vline(xintercept = tech_crash) +
+  geom_text(aes(y = 200, x = as.Date("2000-03-01"), label = "Tech Bubble Burst", hjust = -0.03), size = 3) +
+  geom_vline(xintercept = asia_crash_st) +
+  geom_text(aes(y = 200, x = as.Date("1997-09-01"), label = "Asian Market Crash", hjust = 1), size = 3) +
+  ggtitle("Performance of six American companies from \n1995 to 2005") +
+  theme(plot.title = element_text(hjust = 0.5))
+ 
+```
+
+
+I've highlighted two major stock market crashes that took place over this time period - 1) Asian Stock Market crash of 1997, and 2) The dot com bust of 2000. Interestingly, while the dot com bust expectedly depressed stock prices, the Asian Market crash seemed to have the opposite effect. While we might have expected the Asian crash to have a weaker effect on American stocks, this is still surprising. Lets zoom in to investigate further...
+
+```{r}
+ggplot(data = stocks_slice_t) +
+  geom_line(mapping = aes(x = Date, y = Stock_Price, color = Company)) +
+  geom_vline(xintercept = asia_crash_st) +
+  geom_text(aes(y = 200, x = as.Date("1997-09-01"), label = "Asian Crash Start", hjust = 1), size = 3) +
+  scale_x_date(limits = as.Date(c("1997-05-01", "1998-02-01")),
+               labels=date_format("%Y-%m-%d")) +
+  ggtitle("Effect of Asian stock market Crash on \n6 large American companies") +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+```
+
+
+Turns out the impact the Asian stock market crash only negatively affected the stocks of Procter & Gamble and Boeing. This is somewhat surprising, given the international reach of of Coca-Cola and IBM.
+
+
+
+```{r, results = 'hide'}
+tapply(ibm$StockPrice, months(ibm$Date), mean) > mean(ibm$StockPrice)
+
+which.max(tapply(coke$StockPrice, months(coke$Date), mean))
+which.max(tapply(ge$StockPrice, months(ge$Date), mean))
+
+```
+
+Finally, here are some interesting snippets we learned from analyzing stock behaviour on a monthly basis 
+
+* Both general electric and Coca-Cola have their highest stock average in April
+* All 6 companies have a higher stock price in January than December

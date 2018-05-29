@@ -1,0 +1,136 @@
+---
+title: "Predicting Song Popularity"
+author: "Raunak Pednekar"
+date: "June 22, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, results = 'hide', comment = '')
+```
+
+```{r}
+library(tidyverse)
+library(broom)
+library(knitr)
+```
+
+#Introduction
+
+The music industry has a well-developed market with a global annual revenue around $15 billion. The recording industry is highly competitive and is dominated by three big production companies which make up nearly 82% of the total annual album sales. 
+
+Artists are at the core of the music industry and record labels provide them with the necessary resources to sell their music on a large scale. A record label incurs numerous costs (studio recording, marketing, distribution, and touring) in exchange for a percentage of the profits from album sales, singles and concert tickets.
+
+Unfortunately, the success of an artist's release is highly uncertain: a single may be extremely popular, resulting in widespread radio play and digital downloads, while another single may turn out quite unpopular, and therefore unprofitable. 
+Knowing the competitive nature of the recording industry, record labels face the fundamental decision problem of which musical releases to support to maximize their financial success. In this report I will use song characteristics to attempt to predict whether a particular song will be in the Top 10 or not
+
+```{r}
+#Reading data in
+songs <- read.csv("./Data/songs.csv")
+```
+
+```{r}
+#Exploring Data
+nrow(filter(songs, year ==2010))
+nrow(filter(songs, artistname == "Michael Jackson"))
+filter(songs, artistname == "Michael Jackson", Top10 == 1)
+
+unique(songs$timesignature)
+count(songs, timesignature)
+
+target = c("Until The Day I Die", "Wanna Be Startin' Somethin'", "My Happy Ending", "You Make Me Wanna..." )
+filter(songs, songtitle %in% target)
+
+filter(songs, songtitle == "Until The Day I Die" || songtitle == "Wanna Be Startin' Somethin'" || songtitle == "My Happy Ending" || songtitle == "You Make Me Wanna...")
+```
+#Building a Model
+
+
+```{r}
+#splitting training and test sets
+
+nonvars = c("year", "songtitle", "artistname", "songID", "artistID")
+
+
+songs_train <- filter(songs, year <= 2009)
+songs_train <- songs_train[ , !(names(songs_train) %in% nonvars) ]
+
+songs_test <- filter(songs, year == 2010)
+songs_test <- songs_test[ , !(names(songs_test) %in% nonvars) ]
+```
+
+Since we're predicting a binary variable (whether or not a song entered the top 10), we will use logistical regression for this problem.
+
+```{r, results = 'markup'}
+#creating logistical mmodel
+
+songs_mdl <- glm(Top10 ~., family = binomial, data = songs_train)
+
+summary(songs_mdl)
+```
+
+Interestingly, our model reveals that the most statistically significant and large effect size variables are not the signature, key and tempo of the song, but the *confidence* in the signature, key, and the tempo. Higher confidence suggests less complex music. This rather plausibly suggests that listeners like less complex songs.
+
+Somewhat more surprising is the fact that the 'loudness' and 'energy' have opposite signs. It is possible that we're dealing with multicollinearity here
+
+
+```{r}
+cor(songs_train$loudness, songs_train$energy)
+```
+
+The correlation between loudness and energy is `r round(cor(songs_train$loudness, songs_train$energy), 2)`. We will expel energy for our new model and test it on new data.
+
+```{r}
+songs_log2 = glm(Top10 ~ . - loudness, data=songs_train, family=binomial)
+summary(songs_log2)
+
+songs_log3 = glm(Top10 ~ . - energy, data=songs_train, family=binomial)
+summary(songs_log3)
+
+```
+
+```{r}
+predictTest = predict(songs_log3, type="response", newdata=songs_test)
+
+song_conf_mat <- table(songs_test$Top10, predictTest > 0.45)
+328/373
+
+nrow(filter(songs, songs$Top10 == 0))/nrow(songs)
+```
+#Testing the Model
+
+Our model has an accuracy of 0.88. The baseline model (of always predicting the more common reponse) has an accuracy of 0.85. This seemingly incremental gain is misleadingly small. This is because the baseline model *never* predicts a song being in the Top 10. Our model predicts 19 such songs correcty. 
+
+Confusion Matrix
+```{r, results='asis'}
+
+kable(song_conf_mat)
+```
+
+
+Our model (at threshold = 0.45) has a sensitivity of 0.32 and a specifity of 0.98.It provides conservative predictions, and predicts that a song will make it to the Top 10 very rarely. So while it detects less than half of the Top 10 songs, we can be very confident in the songs that it does predict to be Top 10 hits. The threshold value can be played around with to make it less conservative.
+
+
+
+#Data
+
+The dataset consists of all songs which made it to the Top 10 of the Billboard Hot 100 Chart from 1990-2010 plus a sample of additional songs that didn't make the Top 10. This data comes from three sources: Wikipedia, Billboard.com, and EchoNest.
+
+The variables included in the dataset either describe the artist or the song, or they are associated with the following song attributes: time signature, loudness, key, pitch, tempo, and timbre.
+
+Here's a detailed description of the variables:
+
+* year = the year the song was released
+* songtitle = the title of the song
+* artistname = the name of the artist of the song
+* songID and artistID = identifying variables for the song and artist
+* timesignature and timesignature_confidence = a variable estimating the time signature of the song, and the confidence in the estimate
+* loudness = a continuous variable indicating the average amplitude of the audio in decibels
+* tempo and tempo_confidence = a variable indicating the estimated beats per minute of the song, and the confidence in the estimate
+* key and key_confidence = a variable with twelve levels indicating the estimated key of the song (C, C#, . . ., B), and the confidence in the estimate
+* energy = a variable that represents the overall acoustic energy of the song, using a mix of features such as loudness
+* pitch = a continuous variable that indicates the pitch of the song
+* timbre_0_min, timbre_0_max, timbre_1_min, timbre_1_max, . . . , timbre_11_min, and timbre_11_max = variables that indicate the minimum/maximum values over all segments for each of the twelve values in the timbre vector (resulting in 24 continuous variables)
+* Top10 = a binary variable indicating whether or not the song made it to the Top 10 of the Billboard Hot 100 Chart (1 if it was in the top 10, and 0 if it was not)
